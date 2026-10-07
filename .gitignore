@@ -1,0 +1,16 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+*.jks
+*.keystore
+
+server/node_modules/
+server/data.json
+server/data.json.tmp
+server/backups/
+server/.env
+server/cloudflared.exe
+server/tunnel.log
