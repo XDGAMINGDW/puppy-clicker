@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +36,29 @@ class ClickerService : Service() {
         ServiceCompat.startForeground(this, Notifications.ID_SERVICE, Notifications.serviceNotification(this), type)
         running = true
         connect()
+        scope.launch {
+            var previousSocket: WebSocket? = null
+            var previousScreen: Boolean? = null
+            var ticks = 0
+            while (isActive) {
+                val currentSocket = socket
+                if (currentSocket != null && ClickRepository.connected.value) {
+                    val prefs = Prefs(this@ClickerService)
+                    val screenOn = if (prefs.shareScreenStatus) {
+                        getSystemService(PowerManager::class.java).isInteractive
+                    } else null
+                    if (currentSocket !== previousSocket || screenOn != previousScreen || ticks >= 6) {
+                        currentSocket.send(JSONObject().put("type", "presence")
+                            .put("screenOn", screenOn ?: JSONObject.NULL).toString())
+                        previousSocket = currentSocket
+                        previousScreen = screenOn
+                        ticks = 0
+                    }
+                    ticks += 1
+                }
+                delay(5_000L)
+            }
+        }
         scope.launch {
             while (isActive) {
                 runCatching { Updater.check() }.getOrNull()?.let { Notifications.showUpdate(this@ClickerService, it.versionName) }
@@ -70,8 +94,14 @@ class ClickerService : Service() {
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                val state = runCatching { ApiClient.parseState(JSONObject(text)) }.getOrNull() ?: return
-                scope.launch { onState(state) }
+                val json = runCatching { JSONObject(text) }.getOrNull() ?: return
+                val state = runCatching { ApiClient.parseState(json) }.getOrNull() ?: return
+                ClickRepository.recordServerUpdate()
+                scope.launch {
+                    if (webSocket !== socket || !running) return@launch
+                    prefs.role?.let { ApiClient.updatePartnerPresence(json, it) }
+                    onState(state)
+                }
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {

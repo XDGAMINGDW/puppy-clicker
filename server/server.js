@@ -32,7 +32,12 @@ function parseState(data) {
   const totalUsed = Number.isSafeInteger(data.totalUsed)
     ? toCount(data.totalUsed)
     : Math.max(0, totalReceived - toCount(data.available));
-  return { totalReceived, totalUsed };
+  const presence = {};
+  for (const role of ['sender', 'receiver']) {
+    const saved = data.presence?.[role];
+    presence[role] = { lastSeen: toCount(saved?.lastSeen), lastScreenOn: toCount(saved?.lastScreenOn) };
+  }
+  return { totalReceived, totalUsed, presence };
 }
 
 function listBackups() {
@@ -56,13 +61,25 @@ function loadState() {
       // Missing or corrupt; try the next newest copy.
     }
   }
-  return { totalReceived: 0, totalUsed: 0 };
+  return parseState({ totalReceived: 0, totalUsed: 0 });
 }
 
 const state = loadState();
 
 function publicState() {
-  return { ...state, available: Math.max(0, state.totalReceived - state.totalUsed) };
+  const now = Date.now();
+  const presence = {};
+  for (const role of ['sender', 'receiver']) {
+    const clients = [...wss.clients].filter(client => client.role === role &&
+      client.readyState === client.OPEN && now - client.lastSeen < 65_000);
+    const shared = clients.filter(client => typeof client.screenOn === 'boolean');
+    presence[role] = {
+      ...state.presence[role],
+      online: clients.length > 0,
+      screenOn: shared.length ? shared.some(client => client.screenOn) : null,
+    };
+  }
+  return { ...state, presence, serverTime: now, available: Math.max(0, state.totalReceived - state.totalUsed) };
 }
 
 function saveState() {
@@ -182,15 +199,40 @@ function broadcast() {
 }
 
 server.on('upgrade', (req, socket, head) => {
-  if (req.url !== '/ws' || !roleOf(req)) {
+  const role = roleOf(req);
+  if (req.url !== '/ws' || !role) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
   }
   wss.handleUpgrade(req, socket, head, (ws) => {
+    ws.role = role;
+    ws.screenOn = null;
     ws.isAlive = true;
-    ws.on('pong', () => { ws.isAlive = true; });
-    ws.send(JSON.stringify(publicState()));
+    const recordSeen = () => {
+      ws.lastSeen = Date.now();
+      state.presence[role].lastSeen = ws.lastSeen;
+      if (ws.screenOn === true) state.presence[role].lastScreenOn = ws.lastSeen;
+      saveState();
+    };
+    recordSeen();
+    ws.on('pong', () => {
+      ws.isAlive = true;
+      recordSeen();
+    });
+    ws.on('message', (data, isBinary) => {
+      if (isBinary) return;
+      let message;
+      try { message = JSON.parse(data.toString()); } catch { return; }
+      if (message?.type !== 'presence' ||
+          (message.screenOn !== null && typeof message.screenOn !== 'boolean')) return;
+      ws.screenOn = message.screenOn;
+      if (ws.screenOn === null) state.presence[role].lastScreenOn = 0;
+      recordSeen();
+      broadcast();
+    });
+    ws.on('close', () => broadcast());
+    broadcast();
   });
 });
 
@@ -204,6 +246,7 @@ setInterval(() => {
     ws.isAlive = false;
     ws.ping();
   }
+  broadcast();
 }, 30_000);
 
 server.listen(PORT, HOST, () => {

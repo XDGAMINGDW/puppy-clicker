@@ -3,6 +3,7 @@ package com.xeamum.puppyclicker
 import android.content.Context
 import androidx.core.content.edit
 import java.security.MessageDigest
+import java.time.LocalDate
 
 enum class Role {
     SENDER, RECEIVER;
@@ -26,6 +27,14 @@ class Prefs(context: Context) {
     var role: Role?
         get() = sp.getString("role", null)?.let(Role::valueOf)
         set(value) = sp.edit { putString("role", value?.name) }
+
+    var relationshipStart: LocalDate?
+        get() = sp.getString("relationship_start", null)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        set(value) = sp.edit { putString("relationship_start", value?.toString()) }
+
+    var shareScreenStatus: Boolean
+        get() = sp.getBoolean("share_screen_status", true)
+        set(value) = sp.edit { putBoolean("share_screen_status", value) }
 
     /** Last seen `totalReceived`, used to detect clicks that arrived while offline. -1 = unknown. */
     var lastKnownTotal: Int
@@ -66,5 +75,6 @@ class Prefs(context: Context) {
         remove("role")
         remove("last_total")
         remove("last_used")
+        remove("share_screen_status")
     }
 }

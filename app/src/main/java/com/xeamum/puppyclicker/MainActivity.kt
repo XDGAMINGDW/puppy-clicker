@@ -53,6 +53,8 @@ private fun App(updateCheck: Int) {
         prefs.logout()
         ClickRepository.state.value = null
         ClickRepository.pending.value = 0
+        ClickRepository.lastServerUpdate.value = null
+        ClickRepository.partnerPresence.value = null
         role = null
     }
 

@@ -1,5 +1,6 @@
 package com.xeamum.puppyclicker
 
+import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
@@ -15,10 +16,26 @@ import java.util.concurrent.TimeUnit
 
 data class ClickState(val available: Int, val totalReceived: Int, val totalUsed: Int)
 
+data class PartnerPresence(
+    val online: Boolean,
+    val screenOn: Boolean?,
+    val lastSeen: Long,
+    val lastScreenOn: Long,
+    val ageAtReceipt: Long,
+    val receivedAt: Long,
+)
+
 /** Live state shared between the background service and the UI. */
 object ClickRepository {
     val state = MutableStateFlow<ClickState?>(null)
     val connected = MutableStateFlow(false)
+    val lastServerUpdate = MutableStateFlow<Long?>(null)
+    val partnerPresence = MutableStateFlow<PartnerPresence?>(null)
+
+    fun recordServerUpdate() {
+        lastServerUpdate.value = SystemClock.elapsedRealtime()
+    }
+
     /** Clicks done on this phone that the server hasn't confirmed yet. */
     val pending = MutableStateFlow(0)
 }
@@ -59,7 +76,12 @@ class ApiClient(baseUrl: String, private val token: String) {
                     response.code,
                 )
             }
-            json ?: throw ApiException("Invalid server response", 0)
+            val result = json ?: throw ApiException("Invalid server response", 0)
+            ClickRepository.recordServerUpdate()
+            result.optString("role").takeIf { it == "sender" || it == "receiver" }?.let {
+                updatePartnerPresence(result, Role.fromServer(it))
+            }
+            result
         }
 
     companion object {
@@ -68,6 +90,24 @@ class ApiClient(baseUrl: String, private val token: String) {
             .build()
 
         private val JSON_TYPE = "application/json".toMediaType()
+
+        fun updatePartnerPresence(json: JSONObject, role: Role) {
+            val partnerRole = if (role == Role.SENDER) "receiver" else "sender"
+            val presence = json.optJSONObject("presence")?.optJSONObject(partnerRole)
+            if (presence == null) {
+                ClickRepository.partnerPresence.value = null
+                return
+            }
+            val lastSeen = presence.optLong("lastSeen")
+            ClickRepository.partnerPresence.value = PartnerPresence(
+                online = presence.optBoolean("online"),
+                screenOn = if (presence.isNull("screenOn")) null else presence.optBoolean("screenOn"),
+                lastSeen = lastSeen,
+                lastScreenOn = presence.optLong("lastScreenOn"),
+                ageAtReceipt = (json.optLong("serverTime", lastSeen) - lastSeen).coerceAtLeast(0L),
+                receivedAt = SystemClock.elapsedRealtime(),
+            )
+        }
 
         fun parseState(json: JSONObject): ClickState {
             val available = json.getInt("available")
