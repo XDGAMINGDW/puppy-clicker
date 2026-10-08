@@ -15,9 +15,9 @@ android {
         minSdk = 26
         targetSdk = 35
         // CI passes these from the git tag so every release is newer than the last.
-        versionCode = (findProperty("versionCode") as String?)?.toInt() ?: 1
-        versionName = (findProperty("versionName") as String?) ?: "1.0.0"
-        buildConfigField("String", "UPDATE_REPO", "\"${findProperty("updateRepo")}\"")
+        versionCode = (findProperty("versionCode") as String?)?.toInt() ?: 2
+        versionName = (findProperty("versionName") as String?) ?: "1.0.1"
+        buildConfigField("String", "UPDATE_REPO", "\"${findProperty("updateRepo") ?: "XDGAMINGDW/puppy-clicker"}\"")
     }
 
     signingConfigs {

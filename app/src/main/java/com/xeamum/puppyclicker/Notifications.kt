@@ -17,17 +17,20 @@ import androidx.core.content.ContextCompat
 object Notifications {
     private const val CHANNEL_SERVICE = "service"
     private const val CHANNEL_CLICKS = "clicks"
+    private const val CHANNEL_USED = "used_clicks"
     private const val CHANNEL_UPDATES = "updates"
 
     const val ID_SERVICE = 1
     private const val ID_CLICKS = 2
     private const val ID_UPDATE = 3
+    private const val ID_USED = 4
 
     fun createChannels(context: Context) {
         context.getSystemService(NotificationManager::class.java).createNotificationChannels(
             listOf(
                 NotificationChannel(CHANNEL_SERVICE, "Connection", NotificationManager.IMPORTANCE_MIN),
                 NotificationChannel(CHANNEL_CLICKS, "Clicks", NotificationManager.IMPORTANCE_HIGH),
+                NotificationChannel(CHANNEL_USED, "Used clicks", NotificationManager.IMPORTANCE_HIGH),
                 NotificationChannel(CHANNEL_UPDATES, "App updates", NotificationManager.IMPORTANCE_DEFAULT),
             )
         )
@@ -36,7 +39,7 @@ object Notifications {
     fun serviceNotification(context: Context): Notification =
         NotificationCompat.Builder(context, CHANNEL_SERVICE)
             .setSmallIcon(R.drawable.ic_paw)
-            .setContentTitle("Waiting for clicks")
+            .setContentTitle("Keeping clicks in sync")
             .setContentIntent(openApp(context))
             .setOngoing(true)
             .build()
@@ -53,6 +56,20 @@ object Notifications {
             .setContentIntent(openApp(context))
             .build()
         NotificationManagerCompat.from(context).notify(ID_CLICKS, notification)
+    }
+
+    @SuppressLint("MissingPermission")
+    fun showUsedClicks(context: Context, amount: Int, available: Int) {
+        if (!canNotify(context)) return
+        val notification = NotificationCompat.Builder(context, CHANNEL_USED)
+            .setSmallIcon(R.drawable.ic_paw)
+            .setContentTitle(if (amount == 1) "Your partner used a click!" else "Your partner used $amount clicks!")
+            .setContentText("$available available")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(openApp(context))
+            .build()
+        NotificationManagerCompat.from(context).notify(ID_USED, notification)
     }
 
     @SuppressLint("MissingPermission")

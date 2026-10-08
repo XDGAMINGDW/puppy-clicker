@@ -32,6 +32,10 @@ class Prefs(context: Context) {
         get() = sp.getInt("last_total", -1)
         set(value) = sp.edit { putInt("last_total", value) }
 
+    var lastKnownUsed: Int
+        get() = sp.getInt("last_used", -1)
+        set(value) = sp.edit { putInt("last_used", value) }
+
     /** This phone's copy of the totals; survives logout so unsent clicks aren't lost when the server address changes. */
     var localReceived: Int
         get() = sp.getInt("local_received", 0)
@@ -61,5 +65,6 @@ class Prefs(context: Context) {
         remove("token")
         remove("role")
         remove("last_total")
+        remove("last_used")
     }
 }

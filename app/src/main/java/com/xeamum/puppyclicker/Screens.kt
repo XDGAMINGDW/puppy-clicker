@@ -103,6 +103,7 @@ fun SetupScreen(prefs: Prefs, onConfigured: (Role) -> Unit) {
                         prefs.token = code
                         prefs.role = role
                         prefs.lastKnownTotal = -1
+                        prefs.lastKnownUsed = -1
                         onConfigured(role)
                     } catch (e: Exception) {
                         error = e.message ?: "Could not connect"
@@ -112,6 +113,7 @@ fun SetupScreen(prefs: Prefs, onConfigured: (Role) -> Unit) {
                 }
             },
         ) { Text(if (busy) "Connecting..." else "Connect") }
+        Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -122,18 +124,29 @@ fun SenderScreen(prefs: Prefs, onLogout: () -> Unit) {
     val haptics = LocalHapticFeedback.current
     val state by ClickRepository.state.collectAsState()
     val pending by ClickRepository.pending.collectAsState()
+    val connected by ClickRepository.connected.collectAsState()
     var amount by remember { mutableIntStateOf(1) }
     var message by remember { mutableStateOf<String?>(null) }
 
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        ClickerService.start(context)
+    }
     LaunchedEffect(Unit) {
         Sync.showLocal(context)
-        runCatching { Sync.pushOrQueue(context) }
+        val needsPermission = Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else ClickerService.start(context)
     }
 
     ScreenLayout(title = "Send clicks", onLogout = onLogout) {
         Text("He has", style = MaterialTheme.typography.titleMedium)
         BigCount(state?.available)
         Text("clicks available")
+        Text(
+            if (connected) "Connected" else "Offline, showing saved count",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.outline,
+        )
         Spacer(Modifier.height(32.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             FilledTonalButton(onClick = { amount = (amount - 1).coerceAtLeast(1) }) { Text("-") }
@@ -202,7 +215,7 @@ fun ReceiverScreen(prefs: Prefs, onLogout: () -> Unit) {
 }
 
 @Composable
-fun UpdateDialog() {
+fun UpdateDialog(checkTrigger: Int) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var update by remember { mutableStateOf<UpdateInfo?>(null) }
@@ -211,7 +224,9 @@ fun UpdateDialog() {
     var apk by remember { mutableStateOf<File?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) { update = runCatching { Updater.check() }.getOrNull() }
+    LaunchedEffect(checkTrigger) {
+        if (!downloading && apk == null) update = runCatching { Updater.check() }.getOrNull()
+    }
     val info = update ?: return
 
     AlertDialog(
@@ -270,7 +285,7 @@ private fun ScreenLayout(title: String, onLogout: () -> Unit, content: @Composab
             content = content,
         )
         Text(
-            "v${BuildConfig.VERSION_NAME}",
+            "Version ${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.outline,
         )

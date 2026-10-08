@@ -11,6 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -19,6 +20,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 class MainActivity : ComponentActivity() {
+    private var updateCheck by mutableIntStateOf(0)
+
+    override fun onResume() {
+        super.onResume()
+        updateCheck += 1
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -27,7 +35,7 @@ class MainActivity : ComponentActivity() {
                 colorScheme = lightColorScheme(primary = Color(0xFFE91E63), secondary = Color(0xFF8D6E63))
             ) {
                 Surface(Modifier.fillMaxSize()) {
-                    Surface(Modifier.safeDrawingPadding()) { App() }
+                    Surface(Modifier.safeDrawingPadding()) { App(updateCheck) }
                 }
             }
         }
@@ -35,7 +43,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun App() {
+private fun App(updateCheck: Int) {
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
     var role by remember { mutableStateOf(prefs.role.takeIf { prefs.isConfigured }) }
@@ -53,5 +61,5 @@ private fun App() {
         Role.SENDER -> SenderScreen(prefs, logout)
         Role.RECEIVER -> ReceiverScreen(prefs, logout)
     }
-    UpdateDialog()
+    UpdateDialog(updateCheck)
 }

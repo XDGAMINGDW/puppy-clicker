@@ -20,7 +20,6 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 
-/** Receiver-side service: keeps a WebSocket open so clicks arrive instantly, and checks for app updates. */
 class ClickerService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var socket: WebSocket? = null
@@ -101,12 +100,17 @@ class ClickerService : Service() {
     private fun onState(server: ClickState) {
         val prefs = Prefs(this)
         val previous = prefs.lastKnownTotal
+        val previousUsed = prefs.lastKnownUsed
         // Merged totals never go down, so a restored server doesn't cause duplicate notifications.
         val state = Sync.merge(this, server)
-        if (previous in 0 until state.totalReceived) {
+        if (prefs.role == Role.RECEIVER && previous in 0 until state.totalReceived) {
             Notifications.showClicks(this, state.totalReceived - previous, state.available)
         }
+        if (prefs.role == Role.SENDER && previousUsed in 0 until state.totalUsed) {
+            Notifications.showUsedClicks(this, state.totalUsed - previousUsed, state.available)
+        }
         prefs.lastKnownTotal = state.totalReceived
+        prefs.lastKnownUsed = state.totalUsed
     }
 
     companion object {
